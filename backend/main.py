@@ -10,11 +10,10 @@ from database import engine, get_db, Base
 from models import User, Project, Module, Task, Subtask, TaskHistory
 from auth import hash_password, verify_password, create_access_token
 from ai_helper import extract_text_from_file, split_into_tasks
+from email_helper import send_task_completed
+from scheduler import start_scheduler
 
-# Create all tables
 Base.metadata.create_all(bind=engine)
-
-# Create uploads folder
 os.makedirs("uploads", exist_ok=True)
 
 app = FastAPI()
@@ -27,9 +26,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ─────────────────────────────────────────
-# Input shapes
-# ─────────────────────────────────────────
+start_scheduler()
+
 
 class RegisterInput(BaseModel):
     name: str
@@ -37,23 +35,37 @@ class RegisterInput(BaseModel):
     password: str
     role: str = "employee"
 
+
 class LoginInput(BaseModel):
     email: str
     password: str
 
-# ─────────────────────────────────────────
-# Basic routes
-# ─────────────────────────────────────────
+
+class TaskStatusUpdate(BaseModel):
+    status: str
+    user_id: int
+    user_name: str
+
+
+class AssignTaskInput(BaseModel):
+    user_id: int
+
 
 @app.get("/")
 def home():
     return {"message": "TaskFlow backend is running!"}
 
+
 @app.post("/register")
 def register(data: RegisterInput, db: Session = Depends(get_db)):
-    existing_user = db.query(User).filter(User.email == data.email).first()
+    existing_user = db.query(User).filter(
+        User.email == data.email
+    ).first()
     if existing_user:
-        raise HTTPException(status_code=400, detail="Email already registered")
+        raise HTTPException(
+            status_code=400,
+            detail="Email already registered"
+        )
     hashed = hash_password(data.password)
     new_user = User(
         name=data.name,
@@ -66,12 +78,20 @@ def register(data: RegisterInput, db: Session = Depends(get_db)):
     db.refresh(new_user)
     return {"message": "Registration successful!", "user_id": new_user.id}
 
+
 @app.post("/login")
 def login(data: LoginInput, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == data.email).first()
+    user = db.query(User).filter(
+        User.email == data.email
+    ).first()
     if not user or not verify_password(data.password, user.password):
-        raise HTTPException(status_code=401, detail="Invalid email or password")
-    token = create_access_token({"user_id": user.id, "role": user.role})
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid email or password"
+        )
+    token = create_access_token(
+        {"user_id": user.id, "role": user.role}
+    )
     return {
         "message": "Login successful!",
         "token": token,
@@ -83,9 +103,20 @@ def login(data: LoginInput, db: Session = Depends(get_db)):
         }
     }
 
-# ─────────────────────────────────────────
-# Upload agreement and create project
-# ─────────────────────────────────────────
+
+@app.get("/users")
+def get_users(db: Session = Depends(get_db)):
+    users = db.query(User).all()
+    return [
+        {
+            "id": u.id,
+            "name": u.name,
+            "email": u.email,
+            "role": u.role
+        }
+        for u in users
+    ]
+
 
 @app.post("/projects/upload")
 async def upload_agreement(
@@ -94,24 +125,20 @@ async def upload_agreement(
     user_id: int = Form(...),
     db: Session = Depends(get_db)
 ):
-    # Save uploaded file
     file_path = f"uploads/{file.filename}"
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    # Extract text from file
     document_text = extract_text_from_file(file_path, file.filename)
 
     if not document_text.strip():
         raise HTTPException(
             status_code=400,
-            detail="Could not read text from file. Please use a PDF or Word document."
+            detail="Could not read text from file."
         )
 
-    # Send to AI and get modules/tasks/subtasks
     ai_result = split_into_tasks(document_text, project_name)
 
-    # Save project to database
     new_project = Project(
         name=project_name,
         description=f"Created from {file.filename}",
@@ -121,7 +148,6 @@ async def upload_agreement(
     db.commit()
     db.refresh(new_project)
 
-    # Save modules, tasks, subtasks
     for mod_data in ai_result.get("modules", []):
         new_module = Module(
             name=mod_data["name"],
@@ -132,9 +158,10 @@ async def upload_agreement(
         db.refresh(new_module)
 
         for task_data in mod_data.get("tasks", []):
-            # Calculate deadline date
             days = task_data.get("deadline_days", 7)
-            deadline = (datetime.now() + timedelta(days=days)).strftime("%Y-%m-%d")
+            deadline = (
+                datetime.now() + timedelta(days=days)
+            ).strftime("%Y-%m-%d")
 
             new_task = Task(
                 title=task_data["title"],
@@ -148,16 +175,14 @@ async def upload_agreement(
             db.commit()
             db.refresh(new_task)
 
-            # Save task history - created
             history = TaskHistory(
                 task_id=new_task.id,
                 action="created",
                 done_by="AI System",
-                details=f"Task created automatically from agreement document"
+                details="Task created from agreement"
             )
             db.add(history)
 
-            # Save subtasks
             for sub_data in task_data.get("subtasks", []):
                 new_subtask = Subtask(
                     title=sub_data["title"],
@@ -173,32 +198,34 @@ async def upload_agreement(
         "project_name": new_project.name
     }
 
-# ─────────────────────────────────────────
-# Get all projects
-# ─────────────────────────────────────────
 
 @app.get("/projects")
 def get_projects(db: Session = Depends(get_db)):
     projects = db.query(Project).all()
-    result = []
-    for p in projects:
-        result.append({
+    return [
+        {
             "id": p.id,
             "name": p.name,
             "description": p.description,
             "created_at": str(p.created_at)
-        })
-    return result
+        }
+        for p in projects
+    ]
 
-# ─────────────────────────────────────────
-# Get all modules and tasks for a project
-# ─────────────────────────────────────────
 
 @app.get("/projects/{project_id}/tasks")
-def get_project_tasks(project_id: int, db: Session = Depends(get_db)):
-    project = db.query(Project).filter(Project.id == project_id).first()
+def get_project_tasks(
+    project_id: int,
+    db: Session = Depends(get_db)
+):
+    project = db.query(Project).filter(
+        Project.id == project_id
+    ).first()
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise HTTPException(
+            status_code=404,
+            detail="Project not found"
+        )
 
     result = {
         "project_name": project.name,
@@ -213,6 +240,14 @@ def get_project_tasks(project_id: int, db: Session = Depends(get_db)):
         }
 
         for task in module.tasks:
+            assigned_name = None
+            if task.assigned_to:
+                assigned_user = db.query(User).filter(
+                    User.id == task.assigned_to
+                ).first()
+                if assigned_user:
+                    assigned_name = assigned_user.name
+
             task_data = {
                 "id": task.id,
                 "title": task.title,
@@ -221,6 +256,9 @@ def get_project_tasks(project_id: int, db: Session = Depends(get_db)):
                 "priority": task.priority,
                 "deadline": task.deadline,
                 "assigned_to": task.assigned_to,
+                "assigned_name": assigned_name,
+                "completed_at": str(task.completed_at)
+                    if task.completed_at else None,
                 "subtasks": [
                     {
                         "id": s.id,
@@ -235,3 +273,129 @@ def get_project_tasks(project_id: int, db: Session = Depends(get_db)):
         result["modules"].append(mod_data)
 
     return result
+
+
+@app.put("/tasks/{task_id}/status")
+def update_task_status(
+    task_id: int,
+    data: TaskStatusUpdate,
+    db: Session = Depends(get_db)
+):
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(
+            status_code=404,
+            detail="Task not found"
+        )
+
+    old_status = task.status
+    task.status = data.status
+
+    if data.status == "completed":
+        task.completed_at = datetime.now()
+
+        module = db.query(Module).filter(
+            Module.id == task.module_id
+        ).first()
+        if module:
+            project = db.query(Project).filter(
+                Project.id == module.project_id
+            ).first()
+            if project:
+                leader = db.query(User).filter(
+                    User.id == project.created_by
+                ).first()
+                if leader:
+                    send_task_completed(
+                        leader_name=leader.name,
+                        leader_email=leader.email,
+                        task_title=task.title,
+                        employee_name=data.user_name,
+                        project_name=project.name,
+                        completed_at=datetime.now().strftime(
+                            "%d %B %Y at %I:%M %p"
+                        )
+                    )
+
+    history = TaskHistory(
+        task_id=task.id,
+        action="status_changed",
+        done_by=data.user_name,
+        details=f"Status changed from {old_status} to {data.status}"
+    )
+    db.add(history)
+    db.commit()
+
+    return {"message": f"Task status updated to {data.status}"}
+
+
+@app.put("/tasks/{task_id}/assign")
+def assign_task(
+    task_id: int,
+    data: AssignTaskInput,
+    db: Session = Depends(get_db)
+):
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(
+            status_code=404,
+            detail="Task not found"
+        )
+
+    user = db.query(User).filter(User.id == data.user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
+
+    task.assigned_to = data.user_id
+
+    history = TaskHistory(
+        task_id=task.id,
+        action="assigned",
+        done_by="Team Leader",
+        details=f"Task assigned to {user.name}"
+    )
+    db.add(history)
+    db.commit()
+
+    return {"message": f"Task assigned to {user.name}"}
+
+
+@app.get("/tasks/{task_id}/history")
+def get_task_history(
+    task_id: int,
+    db: Session = Depends(get_db)
+):
+    history = db.query(TaskHistory).filter(
+        TaskHistory.task_id == task_id
+    ).order_by(TaskHistory.created_at.desc()).all()
+
+    return [
+        {
+            "id": h.id,
+            "action": h.action,
+            "done_by": h.done_by,
+            "details": h.details,
+            "created_at": str(h.created_at)
+        }
+        for h in history
+    ]
+
+
+@app.post("/test-email")
+def test_email():
+    from email_helper import send_email
+    result = send_email(
+        to_email="panchaksharichakor9881@gmail.com",
+        subject="TaskFlow Test Email",
+        body="<p>Your backend email is working!</p>"
+    )
+    if result:
+        return {"message": "Test email sent! Check your Gmail."}
+    else:
+        raise HTTPException(
+            status_code=500,
+            detail="Email failed. Check App Password in .env file."
+        )
