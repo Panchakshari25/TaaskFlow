@@ -1,0 +1,18 @@
+
+Client Requirements:
+
+1. Patient Registration Module
+The system should allow patients to register with their personal details,
+medical history, and contact information.
+
+2. Doctor Appointment Module
+Patients should be able to book appointments with available doctors.
+The system should show doctor availability and time slots.
+
+3. Billing and Payment Module
+The system should generate bills for consultations and treatments.
+Support for online payment and cash payment options required.
+
+4. Medical Records Module
+All patient medical records should be stored securely.
+Doctors should be able to access and update records during consultation.
