@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
-import { sendTaskCompleted } from "../emailService";
 const API = "http://127.0.0.1:8000";
 
 function Projects() {
@@ -47,14 +46,7 @@ function Projects() {
       });
 
       setMessage("Project created successfully! AI has split it into tasks.");
-      sendTaskCompleted(
-  "Panchakshari",
-  "panchaksharichakor9881@gmail.com",
-  "Test Task",
-  "Test Employee",
-  "Test Project"
-).then(() => alert("Test email sent! Check your Gmail."))
-  .catch((err) => alert("Email error: " + err));
+     
       setProjectName("");
       setFile(null);
       loadProjects();
