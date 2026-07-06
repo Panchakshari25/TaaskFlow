@@ -1,9 +1,8 @@
 [build]
-  base = "frontend"
-  command = "npm run build"
-  publish = "frontend/build"
+  command = "npm install --include=dev && npm run build"
+  publish = "build"
 
 [build.environment]
   CI = "false"
   NODE_VERSION = "18"
-  
+  NPM_CONFIG_PRODUCTION = "false"
