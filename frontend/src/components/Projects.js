@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
+import TaskHistory from "./TaskHistory";
+
 const API = "http://127.0.0.1:8000";
 
 function Projects() {
@@ -11,8 +13,9 @@ function Projects() {
   const [projects, setProjects] = useState([]);
   const [selectedProject, setSelectedProject] = useState(null);
   const [projectTasks, setProjectTasks] = useState(null);
+  const [showHistory, setShowHistory] = useState(false);
+  const [selectedTask, setSelectedTask] = useState(null);
 
-  // Load projects when page opens
   useEffect(() => {
     loadProjects();
   }, []);
@@ -46,7 +49,6 @@ function Projects() {
       });
 
       setMessage("Project created successfully! AI has split it into tasks.");
-     
       setProjectName("");
       setFile(null);
       loadProjects();
@@ -77,9 +79,7 @@ function Projects() {
       {/* Upload Section - only for team leaders */}
       {user?.role === "team_leader" && (
         <div style={styles.uploadBox}>
-          <h3 style={styles.sectionTitle}>
-            Upload Agreement File
-          </h3>
+          <h3 style={styles.sectionTitle}>Upload Agreement File</h3>
           <p style={styles.sectionDesc}>
             Upload your client agreement PDF or Word file. Our AI will
             automatically read it and split it into modules, tasks and
@@ -102,9 +102,7 @@ function Projects() {
           />
 
           {file && (
-            <p style={styles.fileName}>
-              📄 Selected: {file.name}
-            </p>
+            <p style={styles.fileName}>📄 Selected: {file.name}</p>
           )}
 
           <button
@@ -116,7 +114,11 @@ function Projects() {
           </button>
 
           {message && (
-            <p style={message.includes("successfully") ? styles.success : styles.error}>
+            <p style={
+              message.includes("successfully")
+                ? styles.success
+                : styles.error
+            }>
               {message}
             </p>
           )}
@@ -152,7 +154,7 @@ function Projects() {
         )}
       </div>
 
-      {/* Task Board - shows when a project is selected */}
+      {/* Task Board */}
       {projectTasks && (
         <div style={styles.taskBoard}>
           <h3 style={styles.sectionTitle}>
@@ -167,7 +169,7 @@ function Projects() {
                 {module.tasks.map((task) => (
                   <div key={task.id} style={styles.taskCard}>
 
-                    {/* Priority badge */}
+                    {/* Priority and Status */}
                     <div style={styles.taskHeader}>
                       <span style={
                         task.priority === "high"
@@ -199,6 +201,17 @@ function Projects() {
                       ))}
                     </div>
 
+                    {/* View History Button */}
+                    <button
+                      style={styles.historyBtn}
+                      onClick={() => {
+                        setSelectedTask(task);
+                        setShowHistory(true);
+                      }}
+                    >
+                      📋 View History
+                    </button>
+
                   </div>
                 ))}
               </div>
@@ -206,6 +219,19 @@ function Projects() {
           ))}
         </div>
       )}
+
+      {/* Task History Popup */}
+      {showHistory && selectedTask && (
+        <TaskHistory
+          taskId={selectedTask.id}
+          taskTitle={selectedTask.title}
+          onClose={() => {
+            setShowHistory(false);
+            setSelectedTask(null);
+          }}
+        />
+      )}
+
     </div>
   );
 }
@@ -455,6 +481,17 @@ const styles = {
     fontSize: "12px",
     color: "#555",
     padding: "3px 0",
+  },
+  historyBtn: {
+    padding: "6px 12px",
+    backgroundColor: "#f0f4f8",
+    color: "#4f46e5",
+    border: "1px solid #e2e8f0",
+    borderRadius: "6px",
+    cursor: "pointer",
+    fontSize: "12px",
+    fontWeight: "bold",
+    marginTop: "4px",
   },
 };
 
