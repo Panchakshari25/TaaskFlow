@@ -13,6 +13,13 @@ from ai_helper import extract_text_from_file, split_into_tasks
 from email_helper import send_task_completed
 from scheduler import start_scheduler
 from milestone_agent import start_milestone_agent, create_milestones_for_project
+from github_helper import (
+    get_user_repos,
+    get_repo_commits,
+    get_developer_commits,
+    calculate_commit_score
+)
+
 
 Base.metadata.create_all(bind=engine)
 os.makedirs("uploads", exist_ok=True)
@@ -51,6 +58,12 @@ class TaskStatusUpdate(BaseModel):
 
 class AssignTaskInput(BaseModel):
     user_id: int
+    
+class GitHubRepoInput(BaseModel):
+    repo_name: str
+    developer_name: str = ""
+    days: int = 7   
+    
     
 class CommentInput(BaseModel):
     user_id: int
@@ -527,6 +540,51 @@ def get_milestones(
         }
         for m in milestones
     ]
+    
+    @app.get("/github/repos")
+    def github_repos():
+        repos = get_user_repos()
+        if not repos:
+            raise HTTPException(
+                status_code=400,
+                detail="Could not fetch GitHub repos. Check your token."
+            )
+        return repos
+
+
+@app.post("/github/commits")
+def github_commits(data: GitHubRepoInput):
+    if data.developer_name:
+        commits = get_developer_commits(
+            data.repo_name,
+            data.developer_name,
+            data.days
+        )
+    else:
+        commits = get_repo_commits(
+            data.repo_name,
+            data.days
+        )
+
+    score = calculate_commit_score(commits)
+
+    return {
+        "commits": commits,
+        "score": score,
+        "repo": data.repo_name,
+        "developer": data.developer_name or "All"
+    }
+
+
+@app.post("/github/progress-score")
+def github_progress_score(data: GitHubRepoInput):
+    commits = get_developer_commits(
+        data.repo_name,
+        data.developer_name,
+        data.days
+    )
+    score = calculate_commit_score(commits)
+    return score
     
 @app.post("/test-email")
 def test_email():
