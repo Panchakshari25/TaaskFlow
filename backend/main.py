@@ -12,6 +12,7 @@ from auth import hash_password, verify_password, create_access_token
 from ai_helper import extract_text_from_file, split_into_tasks
 from email_helper import send_task_completed
 from scheduler import start_scheduler
+from milestone_agent import start_milestone_agent, create_milestones_for_project
 
 Base.metadata.create_all(bind=engine)
 os.makedirs("uploads", exist_ok=True)
@@ -27,6 +28,7 @@ app.add_middleware(
 )
 
 start_scheduler()
+start_milestone_agent()
 
 
 class RegisterInput(BaseModel):
@@ -49,6 +51,11 @@ class TaskStatusUpdate(BaseModel):
 
 class AssignTaskInput(BaseModel):
     user_id: int
+    
+class CommentInput(BaseModel):
+    user_id: int
+    user_name: str
+    message: str
 
 
 @app.get("/")
@@ -189,14 +196,16 @@ async def upload_agreement(
                     task_id=new_task.id
                 )
                 db.add(new_subtask)
-
         db.commit()
+
+    # Create milestones automatically
+    create_milestones_for_project(new_project.id, db)
 
     return {
         "message": "Project created successfully!",
         "project_id": new_project.id,
         "project_name": new_project.name
-    }
+    } 
 
 
 @app.get("/projects")
@@ -382,8 +391,143 @@ def get_task_history(
         }
         for h in history
     ]
+      
+@app.get("/workload")
+def get_workload(db: Session = Depends(get_db)):
+    users = db.query(User).all()
+    result = []
+
+    for user in users:
+        # Count pending and in_progress tasks
+        active_tasks = db.query(Task).filter(
+            Task.assigned_to == user.id,
+            Task.status.in_(["pending", "in_progress", "overdue"])
+        ).count()
+
+        # Count completed tasks
+        completed_tasks = db.query(Task).filter(
+            Task.assigned_to == user.id,
+            Task.status == "completed"
+        ).count()
+
+        # Calculate workload level
+        if active_tasks == 0:
+            level = "free"
+            color = "#16a34a"
+            percentage = 0
+        elif active_tasks <= 2:
+            level = "low"
+            color = "#16a34a"
+            percentage = 25
+        elif active_tasks <= 4:
+            level = "medium"
+            color = "#f59e0b"
+            percentage = 60
+        elif active_tasks <= 6:
+            level = "high"
+            color = "#dc2626"
+            percentage = 85
+        else:
+            level = "overloaded"
+            color = "#7f1d1d"
+            percentage = 100
+
+        result.append({
+            "id": user.id,
+            "name": user.name,
+            "email": user.email,
+            "role": user.role,
+            "active_tasks": active_tasks,
+            "completed_tasks": completed_tasks,
+            "workload_level": level,
+            "workload_color": color,
+            "workload_percentage": percentage
+        })
+
+    return result
+@app.post("/tasks/{task_id}/comments")
+def add_comment(
+    task_id: int,
+    data: CommentInput,
+    db: Session = Depends(get_db)
+):
+    from models import Comment
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(
+            status_code=404,
+            detail="Task not found"
+        )
+
+    new_comment = Comment(
+        task_id=task_id,
+        user_id=data.user_id,
+        user_name=data.user_name,
+        message=data.message
+    )
+    db.add(new_comment)
+
+    # Log in history
+    history = TaskHistory(
+        task_id=task_id,
+        action="comment_added",
+        done_by=data.user_name,
+        details=f"Comment added: {data.message[:50]}..."
+            if len(data.message) > 50
+            else f"Comment added: {data.message}"
+    )
+    db.add(history)
+    db.commit()
+
+    return {"message": "Comment added successfully!"}
 
 
+@app.get("/tasks/{task_id}/comments")
+def get_comments(
+    task_id: int,
+    db: Session = Depends(get_db)
+):
+    from models import Comment
+    comments = db.query(Comment).filter(
+        Comment.task_id == task_id
+    ).order_by(Comment.created_at.asc()).all()
+
+    return [
+        {
+            "id": c.id,
+            "user_id": c.user_id,
+            "user_name": c.user_name,
+            "message": c.message,
+            "created_at": str(c.created_at)
+        }
+        for c in comments
+    ]
+    
+@app.get("/projects/{project_id}/milestones")
+def get_milestones(
+    project_id: int,
+    db: Session = Depends(get_db)
+):
+    from models import Milestone
+
+    milestones = db.query(Milestone).filter(
+        Milestone.project_id == project_id
+    ).order_by(Milestone.milestone_number).all()
+
+    return [
+        {
+            "id": m.id,
+            "title": m.title,
+            "description": m.description,
+            "due_date": m.due_date,
+            "status": m.status,
+            "milestone_number": m.milestone_number,
+            "completion_percentage": m.completion_percentage,
+            "updated_at": str(m.updated_at)
+        }
+        for m in milestones
+    ]
+    
 @app.post("/test-email")
 def test_email():
     from email_helper import send_email
@@ -399,3 +543,6 @@ def test_email():
             status_code=500,
             detail="Email failed. Check App Password in .env file."
         )
+        
+        
+        

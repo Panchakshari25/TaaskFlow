@@ -78,3 +78,28 @@ class TaskHistory(Base):
     details = Column(Text)
     created_at = Column(DateTime, default=func.now())
     task = relationship("Task", back_populates="history")
+    
+    # Comments table - discussion on each task
+class Comment(Base):
+    __tablename__ = "comments"
+    id = Column(Integer, primary_key=True, index=True)
+    task_id = Column(Integer, ForeignKey("tasks.id"))
+    user_id = Column(Integer, ForeignKey("users.id"))
+    user_name = Column(String, nullable=False)
+    message = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=func.now())
+    
+    # Milestones table
+class Milestone(Base):
+    __tablename__ = "milestones"
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"))
+    title = Column(String, nullable=False)
+    description = Column(Text)
+    due_date = Column(String)
+    status = Column(String, default="pending")
+    # pending, in_progress, completed, missed
+    milestone_number = Column(Integer)
+    completion_percentage = Column(Integer, default=0)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now())
