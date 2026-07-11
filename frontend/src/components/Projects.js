@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
 import TaskHistory from "./TaskHistory";
+import Discussion from "./Discussion";
+import Milestones from "./Milestones";
 
 const API = "http://127.0.0.1:8000";
 
@@ -15,6 +17,8 @@ function Projects() {
   const [projectTasks, setProjectTasks] = useState(null);
   const [showHistory, setShowHistory] = useState(false);
   const [selectedTask, setSelectedTask] = useState(null);
+  const [showDiscussion, setShowDiscussion] = useState(false);
+  const [discussionTask, setDiscussionTask] = useState(null);
 
   useEffect(() => {
     loadProjects();
@@ -160,6 +164,10 @@ function Projects() {
           <h3 style={styles.sectionTitle}>
             📋 {projectTasks.project_name} — Task Board
           </h3>
+          <Milestones
+     projectId={selectedProject}
+     projectName={projectTasks.project_name}
+/>
 
           {projectTasks.modules.map((module) => (
             <div key={module.id} style={styles.moduleBox}>
@@ -211,7 +219,15 @@ function Projects() {
                     >
                       📋 View History
                     </button>
-
+                    <button
+  style={styles.discussionBtn}
+  onClick={() => {
+    setDiscussionTask(task);
+    setShowDiscussion(true);
+  }}
+>
+  💬 Discussion
+</button>
                   </div>
                 ))}
               </div>
@@ -231,7 +247,16 @@ function Projects() {
           }}
         />
       )}
-
+{showDiscussion && discussionTask && (
+  <Discussion
+    taskId={discussionTask.id}
+    taskTitle={discussionTask.title}
+    onClose={() => {
+      setShowDiscussion(false);
+      setDiscussionTask(null);
+    }}
+  />
+)}
     </div>
   );
 }
@@ -493,6 +518,17 @@ const styles = {
     fontWeight: "bold",
     marginTop: "4px",
   },
+  discussionBtn: {
+  padding: "6px 12px",
+  backgroundColor: "#f0fdf4",
+  color: "#16a34a",
+  border: "1px solid #bbf7d0",
+  borderRadius: "6px",
+  cursor: "pointer",
+  fontSize: "12px",
+  fontWeight: "bold",
+  marginTop: "4px",
+},
 };
 
 export default Projects;

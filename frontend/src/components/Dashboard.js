@@ -3,6 +3,7 @@ import Sidebar from "./Sidebar";
 import Navbar from "./Navbar";
 import Home from "./Home";
 import Projects from "./Projects";
+import Workload from "./Workload";
 
 function Dashboard() {
   const user = JSON.parse(localStorage.getItem("user"));
@@ -18,10 +19,10 @@ function Dashboard() {
         return <ComingSoon title="✅ Tasks" desc="All your tasks will appear here." />;
       case "team":
         return <ComingSoon title="👥 Team" desc="Manage your team members here." />;
-      case "workload":
-        return <ComingSoon title="📈 Workload Meter" desc="See who is overloaded and who is free." />;
-      case "discussion":
-        return <ComingSoon title="💬 Discussion" desc="Chat with your team members here." />;
+     case "workload":
+       return <Workload />;
+     case "discussion":
+      return <ComingSoonDiscussion />;
       default:
         return <Home user={user} />;
     }
@@ -43,7 +44,17 @@ function Dashboard() {
     </div>
   );
 }
-
+function ComingSoonDiscussion() {
+  return (
+    <div style={styles.comingSoon}>
+      <h2 style={styles.comingTitle}>💬 Discussion</h2>
+      <p style={styles.comingDesc}>
+        Open any task from Projects page and click
+        the Discussion button to chat with your team!
+      </p>
+    </div>
+  );
+}
 function ComingSoon({ title, desc }) {
   return (
     <div style={styles.comingSoon}>

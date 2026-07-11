@@ -12,12 +12,12 @@ function Sidebar({ activePage, setActivePage, role }) {
 
   // Menu items for Employee
   const employeeMenu = [
-    { id: "home",       icon: "📊", label: "Dashboard"  },
-    { id: "tasks",      icon: "✅", label: "My Tasks"   },
-    { id: "discussion", icon: "💬", label: "Discussion" },
-    { id: "workload",   icon: "📈", label: "Workload"   },
-  ];
-
+  { id: "home",       icon: "📊", label: "Dashboard"  },
+  { id: "projects",   icon: "📁", label: "Projects"   },
+  { id: "tasks",      icon: "✅", label: "My Tasks"   },
+  { id: "discussion", icon: "💬", label: "Discussion" },
+  { id: "workload",   icon: "📈", label: "Workload"   },
+];
   const menu = role === "team_leader" ? leaderMenu : employeeMenu;
 
   return (
