@@ -1,15 +1,15 @@
 function Sidebar({ activePage, setActivePage, role }) {
 
   // Menu items for Team Leader
-  const leaderMenu = [
-    { id: "home",       icon: "📊", label: "Dashboard"  },
-    { id: "projects",   icon: "📁", label: "Projects"   },
-    { id: "tasks",      icon: "✅", label: "All Tasks"  },
-    { id: "team",       icon: "👥", label: "Team"       },
-    { id: "workload",   icon: "📈", label: "Workload"   },
-    { id: "discussion", icon: "💬", label: "Discussion" },
-  ];
-
+ const leaderMenu = [
+  { id: "home",       icon: "📊", label: "Dashboard"   },
+  { id: "projects",   icon: "📁", label: "Projects"    },
+  { id: "tasks",      icon: "✅", label: "All Tasks"   },
+  { id: "team",       icon: "👥", label: "Team"        },
+  { id: "workload",   icon: "📈", label: "Workload"    },
+  { id: "discussion", icon: "💬", label: "Discussion"  },
+  { id: "github",     icon: "🔗", label: "GitHub"      },
+];
   // Menu items for Employee
   const employeeMenu = [
   { id: "home",       icon: "📊", label: "Dashboard"  },

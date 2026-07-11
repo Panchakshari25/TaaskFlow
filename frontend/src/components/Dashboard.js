@@ -4,6 +4,7 @@ import Navbar from "./Navbar";
 import Home from "./Home";
 import Projects from "./Projects";
 import Workload from "./Workload";
+import GitHubTracker from "./GitHubTracker";
 
 function Dashboard() {
   const user = JSON.parse(localStorage.getItem("user"));
@@ -25,6 +26,8 @@ function Dashboard() {
       return <ComingSoonDiscussion />;
       default:
         return <Home user={user} />;
+      case "github":
+     return <GitHubTracker />;
     }
   }
 
