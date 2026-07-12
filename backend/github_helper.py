@@ -160,3 +160,181 @@ def calculate_commit_score(commits: list) -> dict:
             "files_score": round(files_score)
         }
     }
+def get_pull_requests(
+    repo_name: str,
+    state: str = "all"
+) -> list:
+    """
+    Get pull requests from repository
+    state = open, closed, or all
+    """
+    try:
+        g = get_github_client()
+        if not g:
+            return []
+
+        repo = g.get_repo(
+            f"{GITHUB_USERNAME}/{repo_name}"
+        )
+
+        prs = []
+        for pr in repo.get_pulls(
+            state=state,
+            sort="updated",
+            direction="desc"
+        ):
+            # Get review status
+            reviews = list(pr.get_reviews())
+            approved = any(
+                r.state == "APPROVED"
+                for r in reviews
+            )
+            changes_requested = any(
+                r.state == "CHANGES_REQUESTED"
+                for r in reviews
+            )
+
+            if approved:
+                review_status = "approved"
+            elif changes_requested:
+                review_status = "changes_requested"
+            elif reviews:
+                review_status = "reviewed"
+            else:
+                review_status = "pending_review"
+
+            prs.append({
+                "number": pr.number,
+                "title": pr.title,
+                "author": pr.user.login,
+                "state": pr.state,
+                "review_status": review_status,
+                "created_at": str(pr.created_at),
+                "updated_at": str(pr.updated_at),
+                "merged": pr.merged,
+                "merged_at": str(pr.merged_at)
+                    if pr.merged_at else None,
+                "additions": pr.additions,
+                "deletions": pr.deletions,
+                "changed_files": pr.changed_files,
+                "comments": pr.comments,
+                "review_comments": pr.review_comments,
+                "url": pr.html_url,
+                "body": pr.body or ""
+            })
+
+            # Limit to 20 PRs
+            if len(prs) >= 20:
+                break
+
+        return prs
+
+    except Exception as e:
+        print(f"Error getting PRs: {e}")
+        return []
+
+
+def analyze_pr_quality(pr: dict) -> dict:
+    """
+    Use AI logic to analyze PR quality
+    Returns a quality score and feedback
+    """
+    score = 0
+    feedback = []
+
+    # Check title quality
+    if len(pr["title"]) > 10:
+        score += 20
+        feedback.append("✅ Good PR title")
+    else:
+        feedback.append("❌ PR title too short")
+
+    # Check description
+    if len(pr["body"]) > 50:
+        score += 20
+        feedback.append("✅ Good PR description")
+    else:
+        feedback.append("⚠️ Add more description")
+
+    # Check size (smaller PRs are better)
+    total_changes = pr["additions"] + pr["deletions"]
+    if total_changes < 100:
+        score += 25
+        feedback.append("✅ Small focused PR")
+    elif total_changes < 300:
+        score += 15
+        feedback.append("⚠️ Medium sized PR")
+    else:
+        score += 5
+        feedback.append("❌ Large PR — consider splitting")
+
+    # Check review status
+    if pr["review_status"] == "approved":
+        score += 25
+        feedback.append("✅ PR approved by reviewer")
+    elif pr["review_status"] == "reviewed":
+        score += 15
+        feedback.append("⚠️ PR reviewed but not approved")
+    else:
+        score += 0
+        feedback.append("❌ PR not reviewed yet")
+
+    # Check if merged
+    if pr["merged"]:
+        score += 10
+        feedback.append("✅ PR successfully merged")
+
+    return {
+        "quality_score": min(score, 100),
+        "feedback": feedback,
+        "recommendation": (
+            "Excellent PR 🟢" if score >= 70
+            else "Good PR 🟡" if score >= 40
+            else "Needs Improvement 🔴"
+        )
+    }
+
+
+def get_pr_statistics(repo_name: str) -> dict:
+    """Get overall PR statistics for repository"""
+    try:
+        prs = get_pull_requests(repo_name, "all")
+
+        if not prs:
+            return {
+                "total": 0,
+                "open": 0,
+                "merged": 0,
+                "closed": 0,
+                "avg_changes": 0,
+                "merge_rate": 0
+            }
+
+        total = len(prs)
+        open_prs = len([p for p in prs
+                        if p["state"] == "open"])
+        merged = len([p for p in prs if p["merged"]])
+        closed = len([p for p in prs
+                      if p["state"] == "closed"
+                      and not p["merged"]])
+
+        avg_changes = sum(
+            p["additions"] + p["deletions"]
+            for p in prs
+        ) / total if total > 0 else 0
+
+        merge_rate = (merged / total * 100) \
+            if total > 0 else 0
+
+        return {
+            "total": total,
+            "open": open_prs,
+            "merged": merged,
+            "closed": closed,
+            "avg_changes": round(avg_changes),
+            "merge_rate": round(merge_rate)
+        }
+
+    except Exception as e:
+        print(f"PR stats error: {e}")
+        return {}  

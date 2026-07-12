@@ -64,6 +64,9 @@ class GitHubRepoInput(BaseModel):
     developer_name: str = ""
     days: int = 7   
     
+class PRAnalysisInput(BaseModel):
+    repo_name: str
+    state: str = "all"
     
 class CommentInput(BaseModel):
     user_id: int
@@ -585,6 +588,43 @@ def github_progress_score(data: GitHubRepoInput):
     )
     score = calculate_commit_score(commits)
     return score
+  
+@app.post("/github/pull-requests")
+def get_pull_requests(data: PRAnalysisInput):
+    from github_helper import (
+        get_pull_requests,
+        analyze_pr_quality,
+        get_pr_statistics
+    )
+
+    prs = get_pull_requests(
+        data.repo_name,
+        data.state
+    )
+
+    if not prs:
+        return {
+            "pull_requests": [],
+            "statistics": {},
+            "message": "No PRs found"
+        }
+
+    # Analyze each PR
+    analyzed_prs = []
+    for pr in prs:
+        analysis = analyze_pr_quality(pr)
+        analyzed_prs.append({
+            **pr,
+            "analysis": analysis
+        })
+
+    # Get overall statistics
+    stats = get_pr_statistics(data.repo_name)
+
+    return {
+        "pull_requests": analyzed_prs,
+        "statistics": stats
+    }
     
 @app.post("/test-email")
 def test_email():
