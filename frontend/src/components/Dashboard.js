@@ -5,6 +5,7 @@ import Home from "./Home";
 import Projects from "./Projects";
 import Workload from "./Workload";
 import GitHubTracker from "./GitHubTracker";
+import PRAnalysis from "./PRAnalysis";
 
 function Dashboard() {
   const user = JSON.parse(localStorage.getItem("user"));
@@ -28,6 +29,8 @@ function Dashboard() {
         return <Home user={user} />;
       case "github":
      return <GitHubTracker />;
+     case "pr":
+      return <PRAnalysis />;
     }
   }
 
