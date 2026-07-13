@@ -103,3 +103,16 @@ class Milestone(Base):
     completion_percentage = Column(Integer, default=0)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now())
+    # Sprint table
+class Sprint(Base):
+    __tablename__ = "sprints"
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"))
+    sprint_number = Column(Integer)
+    title = Column(String)
+    start_date = Column(String)
+    end_date = Column(String)
+    status = Column(String, default="planned")
+    # planned, active, completed
+    ai_summary = Column(Text, default="")
+    created_at = Column(DateTime, default=func.now())

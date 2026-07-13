@@ -13,6 +13,7 @@ from ai_helper import extract_text_from_file, split_into_tasks
 from email_helper import send_task_completed
 from scheduler import start_scheduler
 from milestone_agent import start_milestone_agent, create_milestones_for_project
+from sprint_planner import plan_sprints, generate_sprint_summary
 from github_helper import (
     get_user_repos,
     get_repo_commits,
@@ -73,6 +74,8 @@ class CommentInput(BaseModel):
     user_name: str
     message: str
 
+class SprintPlanInput(BaseModel):
+    project_id: int
 
 @app.get("/")
 def home():
@@ -625,6 +628,118 @@ def get_pull_requests(data: PRAnalysisInput):
         "pull_requests": analyzed_prs,
         "statistics": stats
     }
+ 
+@app.post("/projects/{project_id}/plan-sprints")
+def plan_project_sprints(
+    project_id: int,
+    db: Session = Depends(get_db)
+):
+    from models import Sprint
+
+    project = db.query(Project).filter(
+        Project.id == project_id
+    ).first()
+
+    if not project:
+        raise HTTPException(
+            status_code=404,
+            detail="Project not found"
+        )
+
+    # Get all tasks
+    all_tasks = []
+    for module in project.modules:
+        for task in module.tasks:
+            all_tasks.append({
+                "id": task.id,
+                "title": task.title,
+                "priority": task.priority,
+                "deadline": task.deadline,
+                "status": task.status
+            })
+
+    if not all_tasks:
+        raise HTTPException(
+            status_code=400,
+            detail="No tasks found in project"
+        )
+
+    # Delete existing sprints for this project
+    db.query(Sprint).filter(
+        Sprint.project_id == project_id
+    ).delete()
+    db.commit()
+
+    # Use AI to plan sprints
+    sprint_plan = plan_sprints(
+        all_tasks,
+        project.name
+    )
+
+    # Save sprints to database
+    saved_sprints = []
+    for sprint_data in sprint_plan.get("sprints", []):
+        # Generate AI summary
+        summary = generate_sprint_summary(sprint_data)
+
+        new_sprint = Sprint(
+            project_id=project_id,
+            sprint_number=sprint_data["sprint_number"],
+            title=sprint_data["title"],
+            start_date=sprint_data["start_date"],
+            end_date=sprint_data["end_date"],
+            status="planned",
+            ai_summary=summary
+        )
+        db.add(new_sprint)
+        db.commit()
+        db.refresh(new_sprint)
+
+        saved_sprints.append({
+            "id": new_sprint.id,
+            "sprint_number": new_sprint.sprint_number,
+            "title": new_sprint.title,
+            "start_date": new_sprint.start_date,
+            "end_date": new_sprint.end_date,
+            "status": new_sprint.status,
+            "ai_summary": new_sprint.ai_summary,
+            "tasks": sprint_data.get("tasks", []),
+            "goal": sprint_data.get("goal", ""),
+            "ai_recommendation": sprint_data.get(
+                "ai_recommendation", ""
+            )
+        })
+
+    return {
+        "message": f"Created {len(saved_sprints)} sprints!",
+        "sprints": saved_sprints,
+        "total_tasks": len(all_tasks)
+    }
+
+
+@app.get("/projects/{project_id}/sprints")
+def get_project_sprints(
+    project_id: int,
+    db: Session = Depends(get_db)
+):
+    from models import Sprint
+
+    sprints = db.query(Sprint).filter(
+        Sprint.project_id == project_id
+    ).order_by(Sprint.sprint_number).all()
+
+    return [
+        {
+            "id": s.id,
+            "sprint_number": s.sprint_number,
+            "title": s.title,
+            "start_date": s.start_date,
+            "end_date": s.end_date,
+            "status": s.status,
+            "ai_summary": s.ai_summary
+        }
+        for s in sprints
+    ]
     
 @app.post("/test-email")
 def test_email():
