@@ -6,6 +6,7 @@ import Projects from "./Projects";
 import Workload from "./Workload";
 import GitHubTracker from "./GitHubTracker";
 import PRAnalysis from "./PRAnalysis";
+import SprintPlanning from "./SprintPlanning";
 
 function Dashboard() {
   const user = JSON.parse(localStorage.getItem("user"));
@@ -31,6 +32,8 @@ function Dashboard() {
      return <GitHubTracker />;
      case "pr":
       return <PRAnalysis />;
+      case "sprint":
+      return <SprintPlanning />;
     }
   }
 
