@@ -11,6 +11,8 @@ function Sidebar({ activePage, setActivePage, role }) {
   { id: "github",     icon: "🔗", label: "GitHub"      },
   { id: "pr", icon: "🔀", label: "PR Analysis" },
   { id: "sprint", icon: "🏃", label: "Sprint Planning" },
+  { id: "scrum", icon: "🤖", label: "Scrum Master" },
+  { id: "release", icon: "🚀", label: "Release Manager" },
 ];
   // Menu items for Employee
   const employeeMenu = [
