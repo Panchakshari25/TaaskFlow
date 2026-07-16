@@ -20,6 +20,19 @@ from github_helper import (
     get_developer_commits,
     calculate_commit_score
 )
+from scrum_master import (
+    start_scrum_master,
+    send_daily_scrum_report,
+    get_project_status,
+    generate_scrum_report
+)
+from release_manager import (
+    start_release_manager,
+    get_release_readiness,
+    generate_release_notes
+)
+
+
 
 
 Base.metadata.create_all(bind=engine)
@@ -37,7 +50,8 @@ app.add_middleware(
 
 start_scheduler()
 start_milestone_agent()
-
+start_scrum_master()
+start_release_manager()
 
 class RegisterInput(BaseModel):
     name: str
@@ -740,6 +754,252 @@ def get_project_sprints(
         }
         for s in sprints
     ]
+    
+@app.post("/scrum/daily-report")
+def trigger_scrum_report():
+    """Manually trigger scrum report for testing"""
+    try:
+        send_daily_scrum_report()
+        return {
+            "message": "Daily scrum report sent!"
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
+
+
+@app.get("/scrum/status")
+def get_scrum_status(db: Session = Depends(get_db)):
+    """Get current project status for dashboard"""
+    status = get_project_status(db)
+    report = generate_scrum_report(status)
+
+    return {
+        "status": status,
+        "ai_report": report,
+        "generated_at": datetime.now().strftime(
+            "%d %B %Y at %I:%M %p"
+        )
+    }  
+    
+@app.get("/projects/{project_id}/release-status")
+def get_release_status(
+    project_id: int,
+    db: Session = Depends(get_db)
+):
+    readiness = get_release_readiness(
+        project_id, db
+    )
+
+    if not readiness:
+        raise HTTPException(
+            status_code=404,
+            detail="Project not found"
+        )
+
+    # Get commits
+    commits = []
+    repo = os.getenv("GITHUB_REPO", "")
+    if repo:
+        try:
+            from github_helper import get_repo_commits
+            commits = get_repo_commits(repo, 30)
+        except:
+            pass
+
+    # Generate release notes
+    notes = generate_release_notes(
+        readiness["project_name"],
+        commits,
+        readiness
+    )
+
+    return {
+        **readiness,
+        "release_notes": notes,
+        "commits_analyzed": len(commits)
+    }
+
+
+@app.post("/projects/{project_id}/send-release-report")
+def send_release_report(
+    project_id: int,
+    db: Session = Depends(get_db)
+):
+    readiness = get_release_readiness(
+        project_id, db
+    )
+
+    if not readiness:
+        raise HTTPException(
+            status_code=404,
+            detail="Project not found"
+        )
+
+    project = db.query(Project).filter(
+        Project.id == project_id
+    ).first()
+
+    leader = db.query(User).filter(
+        User.id == project.created_by
+    ).first()
+
+    if not leader:
+        raise HTTPException(
+            status_code=404,
+            detail="Team leader not found"
+        )
+
+    commits = []
+    repo = os.getenv("GITHUB_REPO", "")
+    if repo:
+        try:
+            from github_helper import get_repo_commits
+            commits = get_repo_commits(repo, 30)
+        except:
+            pass
+
+    notes = generate_release_notes(
+        readiness["project_name"],
+        commits,
+        readiness
+    )
+
+    # Build module status HTML
+    modules_html = ""
+    for mod in readiness["modules_status"]:
+        color = (
+            "#16a34a" if mod["percentage"] == 100
+            else "#f59e0b" if mod["percentage"] >= 50
+            else "#dc2626"
+        )
+        icon = (
+            "✅" if mod["percentage"] == 100
+            else "🔄" if mod["percentage"] >= 50
+            else "⏳"
+        )
+        modules_html += f"""
+        <div style='padding:10px;
+            border-radius:8px;
+            margin:6px 0;
+            background:#f8fafc;
+            border-left:4px solid {color}'>
+            <p style='margin:0'>
+                {icon} <strong>{mod['name']}</strong>
+                — {mod['percentage']}% complete
+                ({mod['completed']}/{mod['total']} tasks)
+            </p>
+        </div>"""
+
+    # Pending tasks HTML
+    pending_html = ""
+    if readiness["pending_tasks"]:
+        for task in readiness["pending_tasks"][:5]:
+            pending_html += f"""
+            <div style='padding:8px;
+                background:#fee2e2;
+                border-radius:6px;
+                margin:4px 0'>
+                ⏳ {task['title']}
+                (Priority: {task['priority']})
+            </div>"""
+    else:
+        pending_html = """
+        <div style='padding:8px;
+            background:#dcfce7;
+            border-radius:6px'>
+            ✅ All tasks completed!
+        </div>"""
+
+    readiness_color = (
+        "#16a34a" if readiness["is_ready"]
+        else "#f59e0b"
+    )
+
+    readiness_label = (
+        "🚀 READY FOR RELEASE!"
+        if readiness["is_ready"]
+        else f"⏳ NOT READY YET — "
+             f"{readiness['overall_percentage']}% complete"
+    )
+
+    send_email(
+        to_email=leader.email,
+        subject=(
+            f"🚀 Release Status Report — "
+            f"{readiness['project_name']}"
+        ),
+        body=f"""
+        <h2 style='color:#1a1a2e;margin-top:0'>
+            🚀 Release Status Report
+        </h2>
+
+        <div style='background:{readiness_color}20;
+            border:2px solid {readiness_color};
+            padding:16px;
+            border-radius:8px;
+            margin-bottom:20px'>
+            <h3 style='margin:0;
+                color:{readiness_color}'>
+                {readiness_label}
+            </h3>
+            <p style='margin:8px 0 0 0;
+                color:{readiness_color}'>
+                Project: {readiness['project_name']}
+            </p>
+        </div>
+
+        <h3>📊 Overall Progress:</h3>
+        <div style='background:#f0f4f8;
+            height:20px;
+            border-radius:10px;
+            overflow:hidden;
+            margin-bottom:8px'>
+            <div style='background:{readiness_color};
+                height:100%;
+                width:{readiness['overall_percentage']}%;
+                border-radius:10px'>
+            </div>
+        </div>
+        <p>{readiness['overall_percentage']}% complete
+        ({readiness['completed_tasks']}/
+        {readiness['total_tasks']} tasks done)</p>
+
+        <h3>📁 Module Status:</h3>
+        {modules_html}
+
+        <h3>⏳ Pending Tasks:</h3>
+        {pending_html}
+
+        <h3>📝 AI Release Notes:</h3>
+        <div style='background:#f8fafc;
+            padding:16px;
+            border-radius:8px;
+            border-left:4px solid #4f46e5'>
+            <p style='white-space:pre-line;margin:0'>
+                {notes}
+            </p>
+        </div>
+
+        <p style='color:#888;font-size:12px;
+            margin-top:20px'>
+            Generated by TaskFlow AI Release Manager
+            on {datetime.now().strftime(
+                '%d %B %Y at %I:%M %p'
+            )}
+        </p>
+        """
+    )
+
+    return {
+        "message": "Release report sent to team leader!",
+        "readiness": readiness,
+        "release_notes": notes
+    }  
+    
+    
     
 @app.post("/test-email")
 def test_email():
